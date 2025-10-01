@@ -48,6 +48,8 @@ class PortfolioAnalyzer:
             sp500 = yf.Ticker("SPY")
             sp500_data = sp500.history(start=self.start_date, end=self.end_date)
             self.benchmark_data = sp500_data['Close']
+            # Fill missing benchmark data too
+            self.benchmark_data = self.benchmark_data.ffill().bfill()
             print("✓ S&P 500 (SPY) data fetched")
         except Exception as e:
             print(f"✗ Error fetching S&P 500: {e}")
@@ -55,12 +57,32 @@ class PortfolioAnalyzer:
         for stock in portfolio_data:
             if portfolio_data[stock].index.tz is not None:
                 portfolio_data[stock].index = portfolio_data[stock].index.tz_localize(None)
+        
+        # Create DataFrame and handle missing data
         self.stock_data = pd.DataFrame(portfolio_data)
-        self.stock_data = self.stock_data.dropna()
+        
+        # Forward-fill missing data (use last available price for missing dates)
+        print(f"Missing data points before filling: {self.stock_data.isnull().sum().sum()}")
+        self.stock_data = self.stock_data.ffill()  # Forward fill
+        self.stock_data = self.stock_data.bfill()  # Backward fill for any remaining NaNs at the beginning
+        
+        # Only drop rows if ALL stocks are missing data for that date
+        initial_shape = self.stock_data.shape
+        self.stock_data = self.stock_data.dropna(how='all')
+        print(f"Data shape: {initial_shape} -> {self.stock_data.shape}")
+        
         if self.stock_data.empty:
             print("\n[WARNING] No overlapping data for all tickers in the selected date range. Try a more recent start_date or check ticker data on Yahoo Finance.")
+        else:
+            remaining_missing = self.stock_data.isnull().sum().sum()
+            if remaining_missing > 0:
+                print(f"[INFO] {remaining_missing} missing data points remain after filling")
+        
         self.stock_data.index = self.stock_data.index.tz_localize(None)
         self.benchmark_data.index = self.benchmark_data.index.tz_localize(None)
+        
+
+        
         return self.stock_data, self.benchmark_data
 
     def calculate_portfolio_returns(self):
@@ -98,14 +120,19 @@ class PortfolioAnalyzer:
             self.calculate_portfolio_returns()
         cumulative_portfolio = (1 + self.portfolio_returns).cumprod() - 1
         cumulative_benchmark = (1 + self.benchmark_returns).cumprod() - 1
+        
         plt.figure(figsize=(12, 6))
         plt.plot(cumulative_portfolio.index, cumulative_portfolio * 100, label='Portfolio', color='blue')
         plt.plot(cumulative_benchmark.index, cumulative_benchmark * 100, label='S&P 500', color='red', alpha=0.7)
-        plt.title('Daily Cumulative Returns: Portfolio vs S&P 500')
+        plt.title(f'Daily Cumulative Returns: Portfolio vs S&P 500\n({self.start_date} to {self.end_date})')
         plt.xlabel('Date')
         plt.ylabel('Cumulative Return (%)')
         plt.legend()
         plt.grid(True, alpha=0.3)
+        # Add data period information
+        trading_days = len(cumulative_portfolio)
+        plt.text(0.02, 0.98, f'Trading Days: {trading_days}', transform=plt.gca().transAxes, 
+                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
         plt.tight_layout()
 
     def create_comparison_plots(self):
@@ -113,16 +140,17 @@ class PortfolioAnalyzer:
         plt.style.use('default')
         qs.extend_pandas()
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        fig.suptitle('Portfolio vs S&P 500 Analysis (QuantStats)', fontsize=16, fontweight='bold')
+        fig.suptitle(f'Portfolio vs S&P 500 Analysis (QuantStats)\n{self.start_date} to {self.end_date}', fontsize=16, fontweight='bold')
         # 1. Cumulative Returns
         ax1 = axes[0, 0]
         cumulative_portfolio = (1 + self.portfolio_returns).cumprod() - 1
         cumulative_benchmark = (1 + self.benchmark_returns).cumprod() - 1
+        
         ax1.plot(cumulative_portfolio.index, cumulative_portfolio * 100, 
                 label='Portfolio', linewidth=2, color='blue')
         ax1.plot(cumulative_benchmark.index, cumulative_benchmark * 100, 
                 label='S&P 500', linewidth=2, color='red', alpha=0.7)
-        ax1.set_title('Cumulative Returns')
+        ax1.set_title(f'Cumulative Returns\n({self.start_date} to {self.end_date})')
         ax1.set_ylabel('Return (%)')
         ax1.legend()
         ax1.grid(True, alpha=0.3)
@@ -189,66 +217,141 @@ class PortfolioAnalyzer:
 # Example usage
 if __name__ == "__main__":
     # Define four portfolios
-    portfolio1  = {
-        'CSSPX.MI': 0.45,
-        'SOXX': 0.2,
-        'SEMI.AS' :0.15,
-        'ASML.AS' :0.1,
-        'WISE': 0.1
-    }
-    portfolio2  = {
-        'CSSPX.MI': 0.3,
-        'VWRD.L': 0.3,
-        'NVDA': 0.1,
-        'ENPH': 0.1,
-        'MRNA': 0.1,
-        'NET': 0.1
-    }
-    portfolio3 = {
-        'CSSPX.MI': 0.5,            
-        'AIAI.MI': 0.2,
-        'NVDA': 0.15,
-        'CEM.PA': 0.1,
-        'NOW': 0.05
-
-    }
-    portfolio4 = {
-        'IWDA.L': 0.5,
-        'EMIM.L': 0.2,
-        'IGLO.L': 0.2,
-        'ASML.AS': 0.02,
-        'MC.PA': 0.02,
-        'MSFT': 0.02,
-        'AAPL': 0.02,
-        'NESN.SW': 0.02
+    for s in (0,1):
+        if s == 0:
+            portfolio1  = {
+                'CSSPX.MI': 0.45,
+                'SOXX': 0.2,
+                'SEMI.AS' :0.15,
+                'ASML' :0.1,
+                'WISE': 0.1
+            }
+            portfolio2  = {
+                'CSSPX.MI': 0.3,
+                'VWRD.L': 0.3,
+                'NVDA': 0.1,
+                'ENPH': 0.1,
+                'MRNA': 0.1,
+                'NET': 0.1
+            }
+            portfolio3 = {
+                'CSSPX.MI': 0.5,            
+                'AIAI.MI': 0.2,
+                'NVDA': 0.15,
+                'CEM.PA': 0.1,
+                'NOW': 0.05
+            }
+            portfolio4 = {
+                'IWDA.L': 0.5,
+                'EMIM.L': 0.2,
+                'IGLO.L': 0.2,
+                'ASML': 0.02,
+                'MOH.MU': 0.02,
+                'MSFT': 0.02,
+                'AAPL': 0.02,
+                'NESM.SG': 0.02
+            }
+            portfolio5 = {
+                'EUAD': 0.25,
+                'GREK': 0.2,
+                'AIAI.SW': 0.15,
+                'BNXG.DE': 0.15,
+                'SPOL.L': 0.1,
+                'NVDA': 0.0375,
+                'AMD': 0.0375,
+                'GOOG': 0.0375,
+                'TSMN.MX': 0.0375, 
+            }
+        else:
+            portfolio1  = {
+                'CSSPX.MI': 0.45,
+                'SOXX': 0.2,
+                'SEMI.AS' :0.15,
+                'ASML' :0.1,
+                'WISE': 0.1
+            }
+            portfolio2  = {
+                'CSSPX.MI': 0.3,
+                'VWRD.L': 0.3,
+                'NVDA': 0.1,
+                'ENPH': 0.1,
+                'MRNA': 0.1,
+                'NET': 0.1
+            }
+            portfolio3 = {
+                'CSSPX.MI': 0.5,            
+                'AIAI.MI': 0.2,
+                'NVDA': 0.15,
+                'CEM.PA': 0.1,
+                'NOW': 0.05
+            }
+            portfolio4 = {
+                'IWDA.L': 0.5,
+                'EMIM.L': 0.2,
+                'IGLO.L': 0.2,
+                'ASML': 0.02,
+                'MOH.MU': 0.02,
+                'MSFT': 0.02,
+                'AAPL': 0.02,
+                'NESM.SG': 0.02
+            }
+            portfolio5 = {
+                'EUAD': 0.25,
+                'GREK': 0.2,
+                'AIAI.SW': 0.15,
+                'BNXG.DE': 0.15,
+                'SPOL.L': 0.1,
+                'NVDA': 0.0375,
+                'AMD': 0.0375,
+                'GOOG': 0.0375,
+                'TSMN.MX': 0.0375, 
+            }
+        # Analyze all portfolios
+        analyzers = []
+        for p in [portfolio1, portfolio2, portfolio3, portfolio4, portfolio5]:
+            analyzer = PortfolioAnalyzer(
+                portfolio_stocks=p,
+                start_date=['2025-09-10', '2025-09-25'][s],
+                end_date=datetime.now().strftime('%Y-%m-%d')
+            )
+            analyzer.fetch_data()
+            analyzer.calculate_portfolio_returns()
+            analyzers.append(analyzer)
+        # Plot all portfolios and benchmark on the same chart
+        import matplotlib.pyplot as plt
+        colors = ['blue', 'green', 'orange', 'purple', 'cyan']
+        labels = ['ChatGPT', 'Gemini', 'Mistral.ai ', 'DeepSeek ', 'Perplexity AI']
+        plt.figure(figsize=(12, 6))
         
-    }
-    # Analyze all portfolios
-    analyzers = []
-    for p in [portfolio1, portfolio2, portfolio3, portfolio4]:
-        analyzer = PortfolioAnalyzer(
-            portfolio_stocks=p,
-            start_date='2025-09-10',
-            end_date=datetime.now().strftime('%Y-%m-%d')
-        )
-        analyzer.fetch_data()
-        analyzer.calculate_portfolio_returns()
-        analyzers.append(analyzer)
-    # Plot all portfolios and benchmark on the same chart
-    import matplotlib.pyplot as plt
-    colors = ['blue', 'green', 'orange', 'purple']
-    labels = ['ChatGPT', 'Gemini', 'Mistral.ai ', 'DeepSeek ']
-    plt.figure(figsize=(12, 6))
-    for i, analyzer in enumerate(analyzers):
-        cumulative = (1 + analyzer.portfolio_returns).cumprod() - 1
-        plt.plot(cumulative.index, cumulative * 100, label=labels[i], color=colors[i])
-    cumulative_benchmark = (1 + analyzers[0].benchmark_returns).cumprod() - 1
-    plt.plot(cumulative_benchmark.index, cumulative_benchmark * 100, label='S&P 500', color='red', alpha=0.7)
-    plt.title('Daily Cumulative Returns: 4 Portfolios vs S&P 500')
-    plt.xlabel('Date')
-    plt.ylabel('Cumulative Return (%)')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show(block=True)
+        # Calculate cumulative returns for all portfolios
+        portfolio_cumulatives = []
+        
+        for i, analyzer in enumerate(analyzers):
+            cumulative = (1 + analyzer.portfolio_returns).cumprod() - 1
+            # Add September 10th with 0% value
+            cumulative.loc[pd.Timestamp(['2025-09-10', '2025-09-25'][s])] = 0.0
+            cumulative = cumulative.sort_index()  # Sort to put Sept 10th in correct chronological position
+            portfolio_cumulatives.append(cumulative)
+            plt.plot(cumulative.index, cumulative * 100, label=labels[i], color=colors[i])
+        
+        # Calculate benchmark cumulative returns
+        cumulative_benchmark_normalized = (1 + analyzers[0].benchmark_returns).cumprod() - 1
+        # Add September 10th with 0% value for benchmark
+        cumulative_benchmark_normalized.loc[pd.Timestamp(['2025-09-10', '2025-09-25'][s])] = 0.0
+        cumulative_benchmark_normalized = cumulative_benchmark_normalized.sort_index()
+        plt.plot(cumulative_benchmark_normalized.index, cumulative_benchmark_normalized * 100, label='S&P 500', color='red', alpha=0.7)
+        if s == 0:
+            plt.title(f'Daily Cumulative Returns: 5 Short Term Portfolios vs S&P 500\n({analyzers[0].start_date} to {analyzers[0].end_date})')
+        else:
+            plt.title(f'Daily Cumulative Returns: 5 Long Term Portfolios vs S&P 500\n({analyzers[0].start_date} to {analyzers[0].end_date})')
+        plt.xlabel('Date')
+        plt.ylabel('Cumulative Return (%)') 
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        # Add data period information
+        trading_days = len(cumulative_benchmark_normalized)
+        plt.text(0.02, 0.98, f'Trading Days: {trading_days}', transform=plt.gca().transAxes, 
+                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        plt.tight_layout()
+    plt.show(block=True)   # Block only for last graph
     input("Press Enter to close the plots...")
