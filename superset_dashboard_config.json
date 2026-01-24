@@ -1,0 +1,45 @@
+{
+  "dashboard_title": "Portfolio Geographic Analysis",
+  "description": "Interactive dashboard showing portfolio allocation by country",
+  "charts": [
+    {
+      "chart_type": "world_map",
+      "title": "Portfolio Geographic Distribution",
+      "table": "country_allocation",
+      "metrics": [
+        "weight"
+      ],
+      "filters": [
+        "portfolio_name"
+      ]
+    },
+    {
+      "chart_type": "pie",
+      "title": "Country Allocation (Pie Chart)",
+      "table": "country_allocation",
+      "metrics": [
+        "weight"
+      ],
+      "groupby": [
+        "country"
+      ],
+      "filters": [
+        "portfolio_name"
+      ]
+    },
+    {
+      "chart_type": "bar",
+      "title": "Country Allocation (Bar Chart)",
+      "table": "country_allocation",
+      "metrics": [
+        "weight"
+      ],
+      "groupby": [
+        "country"
+      ],
+      "filters": [
+        "portfolio_name"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+pandas>=1.5.0
+yfinance>=0.2.0
+numpy>=1.21.0
+quantstats>=0.0.62
+matplotlib>=3.5.0
+IPython>=8.0.0
+
+# For Apache Superset Dashboard (optional)
+apache-superset>=3.0.0
+sqlalchemy-utils>=0.38.0
+pillow>=9.0.0

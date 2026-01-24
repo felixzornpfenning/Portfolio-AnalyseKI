@@ -1,0 +1,4 @@
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+.\venv\Scripts\Activate.ps1
+python "Portfolio Analyse.py"
+python "simple_dashboard.py"
